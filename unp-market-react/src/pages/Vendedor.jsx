@@ -263,19 +263,24 @@ const Vendedor = () => {
         </div>
       </div>
 
-      {/* UBICACIÓN */}
+      {/* ════════════════════════════════════════════════════
+           UBICACIÓN (ESTILO BURBUJA)
+      ════════════════════════════════════════════════════ */}
       <div style={{
         display: "flex", justifyContent: "center",
-        background: "white", padding: "16px 20px",
-        borderBottom: "1px solid #f1f3f5", marginBottom: "8px",
+        background: "transparent", padding: "16px 20px",
       }}>
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "4px" }}>
-          <svg viewBox="0 0 24 24" width="22" height="22" fill="none"
+        <div style={{
+          display: "flex", flexDirection: "row", alignItems: "center", justifyContent: "center", gap: "8px",
+          padding: "10px 20px", background: "white", borderRadius: "24px",
+          border: "1px solid rgba(15, 37, 64, 0.06)", boxShadow: "0 4px 12px rgba(15, 37, 64, 0.04)"
+        }}>
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none"
             stroke="var(--verde-marca)" strokeWidth="2.2" strokeLinecap="round">
             <path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/>
             <circle cx="12" cy="10" r="3"/>
           </svg>
-          <span style={{ fontSize: "0.82rem", fontWeight: 700, color: "var(--azul-oscuro)" }}>
+          <span style={{ fontSize: "0.85rem", fontWeight: 800, color: "var(--azul-oscuro)", margin: 0 }}>
             {v.ubicacion || "Piura"}
           </span>
         </div>

@@ -256,161 +256,60 @@ const Publicar = () => {
   // ──────────────────────────────────────────────────────────────
   return (
     <div className="app-shell" style={{ background: "var(--bg-crema)", margin: "0 auto", padding: 0 }}>
-      {/* HEADER */}
-      <header
-        className="header"
-        style={{
-          justifyContent: "flex-start", gap: "15px",
-          borderBottom: "1px solid var(--border-subtle)",
-          padding: "15px 20px", background: "white", boxSizing: "border-box",
-        }}
-      >
-        <button
-          onClick={() => navigate("/")}
-          style={{
-            background: "none", border: "none", cursor: "pointer",
-            color: "var(--text-dark)", display: "flex", alignItems: "center", padding: 0,
-          }}
-          aria-label="Volver"
-        >
-          <svg viewBox="0 0 24 24" width="26" height="26" fill="none"
-            stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="19" y1="12" x2="5" y2="12"/>
-            <polyline points="12 19 5 12 12 5"/>
+ {/* HEADER MINIMALISTA */}
+      <header className="header" style={{ justifyContent: 'center', background: 'var(--bg-crema)', padding: '20px' }}>
+        <button onClick={() => navigate(-1)} style={{ position: 'absolute', left: '20px', background: 'none', border: 'none', cursor: 'pointer' }}>
+          <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="var(--azul-oscuro)" strokeWidth="2.5" strokeLinecap="round">
+            <line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>
           </svg>
         </button>
-        <h1 style={{ fontSize: "1.25rem", fontWeight: 700, color: "var(--text-dark)", margin: 0 }}>
-          Nueva Publicación
-        </h1>
+        <img src="https://i.ibb.co/fzNKyX51/Dise-o-sin-t-tulo-1.png" alt="Logo" style={{ height: '44px', objectFit: 'contain', mixBlendMode: 'multiply' }} />
       </header>
 
       {/* FORMULARIO */}
-      <main style={{ padding: "16px", paddingBottom: "110px", boxSizing: "border-box" }}>
-        <form
-          onSubmit={handleSubmit}
-          style={{
-            display: "flex", flexDirection: "column", gap: "16px",
-            background: "white", padding: "20px", borderRadius: "24px",
-            boxShadow: "0 4px 15px rgba(0,0,0,0.03)",
-            boxSizing: "border-box", width: "100%",
-          }}
-        >
-          {/* ── FOTO ── */}
-          <div style={{ display: "flex", flexDirection: "column", gap: "8px", width: "100%", boxSizing: "border-box" }}>
-            <label style={labelStyle}>
-              Foto del producto <span style={{ color: "#dc2626" }}>*</span>
-            </label>
+      <main className="publish-container" style={{ background: 'var(--bg-crema)', paddingTop: '10px' }}>
+        <form onSubmit={handleSubmit} className="publish-form-card" style={{ background: 'var(--blanco-puro)' }}>
+          {/* Ya no ponemos el título aquí porque el logo lo reemplaza */}
+          
+          {/* ... resto de tus campos (Foto, Título, Precio, Categoría, Descripción) ... */}
 
-            {/* Área de clic */}
+          {/* ── FOTO ── */}
+          <div style={{ marginBottom: "20px" }}>
+            <label style={labelStyle}>Foto del producto *</label>
             <div
               onClick={() => fileInputRef.current?.click()}
               style={{
-                border: `2px dashed ${archivo ? "#22c55e" : "#c3c6d4"}`,
-                borderRadius: "16px", padding: "25px 15px",
-                textAlign: "center", background: "#fafbff",
-                cursor: "pointer", transition: "all 0.2s ease",
-                boxSizing: "border-box", width: "100%",
+                border: `2px dashed ${archivo ? "var(--verde-marca)" : "#c3c6d4"}`,
+                borderRadius: "16px", padding: "20px", marginTop: "8px",
+                textAlign: "center", background: "var(--bg-crema)", cursor: "pointer",
               }}
             >
-              {!previewUrl && (
-                <svg viewBox="0 0 24 24" width="36" height="36" fill="none"
-                  stroke="#a0a5b9" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"
-                  style={{ marginBottom: "10px" }}>
-                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
-                  <circle cx="8.5" cy="8.5" r="1.5"/>
-                  <polyline points="21 15 16 10 5 21"/>
-                </svg>
-              )}
-
-              <p style={{
-                margin: 0, fontSize: "0.9rem", color: "#5c5c7a",
-                fontWeight: 700, lineHeight: 1.4, whiteSpace: "pre-wrap",
-              }}>
+              {!previewUrl && <span style={{ fontSize: "2rem" }}>📷</span>}
+              <p style={{ fontSize: "0.85rem", fontWeight: 700, color: "#5c5c7a", marginTop: "8px" }}>
                 {imagenAreaTexto()}
               </p>
-
-              {/* Preview de la imagen */}
-              {previewUrl && (
-                <img
-                  src={previewUrl}
-                  alt="Preview"
-                  style={{
-                    display: "block", width: "100%", height: "180px",
-                    objectFit: "cover", borderRadius: "12px",
-                    marginTop: "15px", boxShadow: "0 4px 10px rgba(0,0,0,0.1)",
-                  }}
-                />
-              )}
+              {previewUrl && <img src={previewUrl} alt="Preview" style={{ width: "100%", height: "150px", objectFit: "cover", borderRadius: "12px", marginTop: "10px" }} />}
             </div>
-
-            {/* Input file oculto */}
-            <input
-              type="file"
-              accept="image/*"
-              ref={fileInputRef}
-              onChange={handleFileChange}
-              style={{ display: "none" }}
-            />
-
-            {/* Info de compresión */}
-            {mostrarInfoCompresion && (
-              <p style={{
-                fontSize: "0.78rem", fontWeight: 700, color: "var(--verde-marca)",
-                margin: "4px 0 0", padding: "6px 10px",
-                background: "#f0fdf4", borderRadius: "8px",
-                border: "1px solid #bbf7d0",
-              }}>
-                ✓ La imagen se comprimirá automáticamente antes de subir
-              </p>
-            )}
+            <input type="file" accept="image/*" ref={fileInputRef} onChange={handleFileChange} style={{ display: "none" }} />
           </div>
 
           {/* ── TÍTULO ── */}
-          <div style={{ display: "flex", flexDirection: "column", gap: "8px", width: "100%", boxSizing: "border-box" }}>
-            <label style={labelStyle}>
-              ¿Qué vas a vender?
-              <span style={{
-                fontWeight: 600, fontSize: "0.8rem", float: "right",
-                color: contadorColor(titulo.length, 200, 180),
-              }}>
-                {titulo.length}/200
-              </span>
-            </label>
-            <input
-              type="text"
-              required
-              maxLength={200}
-              placeholder="Ej: Galletas de avena"
-              value={titulo}
-              onChange={(e) => setTitulo(e.target.value)}
-              style={inputStyle}
-            />
+          <div style={{ marginBottom: "16px" }}>
+            <label style={labelStyle}>¿Qué vas a vender?</label>
+            <input type="text" required maxLength={200} placeholder="Ej: Galletas de avena" 
+                   value={titulo} onChange={(e) => setTitulo(e.target.value)} style={inputStyle} />
           </div>
 
           {/* ── PRECIO + CATEGORÍA ── */}
-          <div style={{ display: "flex", flexWrap: "wrap", gap: "12px", width: "100%", boxSizing: "border-box" }}>
-
-            <div style={{ flex: 1, minWidth: "100px", display: "flex", flexDirection: "column", gap: "8px", boxSizing: "border-box" }}>
+          <div style={{ display: "flex", gap: "12px", marginBottom: "16px" }}>
+            <div style={{ flex: 1 }}>
               <label style={labelStyle}>Precio (S/)</label>
-              <input
-                type="number"
-                step="0.10"
-                required
-                placeholder="0.00"
-                value={precio}
-                onChange={(e) => setPrecio(e.target.value)}
-                style={inputStyle}
-              />
+              <input type="number" required placeholder="0.00" value={precio} 
+                     onChange={(e) => setPrecio(e.target.value)} style={inputStyle} />
             </div>
-
-            <div style={{ flex: 1.5, minWidth: "140px", display: "flex", flexDirection: "column", gap: "8px", boxSizing: "border-box" }}>
+            <div style={{ flex: 1.5 }}>
               <label style={labelStyle}>Categoría</label>
-              <select
-                value={categoria}
-                onChange={(e) => setCategoria(e.target.value)}
-                required
-                style={{ ...inputStyle, color: "var(--azul-oscuro)", cursor: "pointer" }}
-              >
+              <select value={categoria} onChange={(e) => setCategoria(e.target.value)} style={{ ...inputStyle, cursor: "pointer" }}>
                 <option value="dulces">🍰 Dulces</option>
                 <option value="salados">🍔 Salados</option>
                 <option value="bebidas">🥤 Bebidas</option>
@@ -418,67 +317,20 @@ const Publicar = () => {
                 <option value="materiales">📚 Materiales</option>
               </select>
             </div>
-
           </div>
 
           {/* ── DESCRIPCIÓN ── */}
-          <div style={{ display: "flex", flexDirection: "column", gap: "8px", width: "100%", boxSizing: "border-box" }}>
-            <label style={labelStyle}>
-              Descripción
-              <span style={{
-                fontWeight: 600, fontSize: "0.8rem", float: "right",
-                color: contadorColor(descripcion.length, 500, 450),
-              }}>
-                {descripcion.length}/500
-              </span>
-            </label>
-            <textarea
-              required
-              rows={3}
-              maxLength={500}
-              placeholder="Detalles, sabores, dónde entregas en el campus..."
-              value={descripcion}
-              onChange={(e) => setDescripcion(e.target.value)}
-              style={{ ...inputStyle, resize: "none" }}
-            />
+          <div style={{ marginBottom: "20px" }}>
+            <label style={labelStyle}>Descripción</label>
+            <textarea required rows={3} maxLength={500} placeholder="Detalles..." 
+                      value={descripcion} onChange={(e) => setDescripcion(e.target.value)} 
+                      style={{ ...inputStyle, resize: "none" }} />
           </div>
 
-          {/* ── BOTÓN PUBLICAR ── */}
-          <button
-            type="submit"
-            disabled={enviando}
-            style={{
-              background: enviando ? "#6b9e74" : "var(--verde-marca)",
-              color: "white", border: "none",
-              padding: "16px", borderRadius: "14px",
-              fontSize: "1.05rem", fontWeight: 600,
-              cursor: enviando ? "not-allowed" : "pointer",
-              boxShadow: "0 6px 20px rgba(58,125,68,0.3)",
-              marginTop: "10px",
-              fontFamily: "'Nunito', sans-serif",
-              boxSizing: "border-box", width: "100%",
-              transition: "background 0.2s ease",
-            }}
-          >
-            {enviando && (
-              <svg
-                style={{ animation: "spin 1s linear infinite", marginRight: "8px", verticalAlign: "middle" }}
-                viewBox="0 0 24 24" width="16" height="16"
-                fill="none" stroke="white" strokeWidth="2.5"
-              >
-                <line x1="12" y1="2" x2="12" y2="6"/>
-                <line x1="12" y1="18" x2="12" y2="22"/>
-                <line x1="4.93" y1="4.93" x2="7.76" y2="7.76"/>
-                <line x1="16.24" y1="16.24" x2="19.07" y2="19.07"/>
-                <line x1="2" y1="12" x2="6" y2="12"/>
-                <line x1="18" y1="12" x2="22" y2="12"/>
-                <line x1="4.93" y1="19.07" x2="7.76" y2="16.24"/>
-                <line x1="16.24" y1="7.76" x2="19.07" y2="4.93"/>
-              </svg>
-            )}
-            {btnTexto}
+          {/* ── BOTÓN ── */}
+          <button type="submit" disabled={enviando} className="btn-publish-final">
+            {enviando ? "Publicando..." : btnTexto}
           </button>
-
         </form>
       </main>
 

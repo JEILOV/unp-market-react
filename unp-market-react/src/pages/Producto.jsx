@@ -450,7 +450,7 @@ const Producto = () => {
 
         <hr style={{ border: "none", borderTop: "1px solid #f1f3f5", margin: "20px 0" }} />
 
-        {/* Descripción */}
+       {/* Descripción */}
         <h2 style={{
           fontSize: "1.1rem", fontWeight: 700,
           color: "var(--azul-oscuro)", marginBottom: "10px",
@@ -460,7 +460,9 @@ const Producto = () => {
         <p style={{
           fontSize: "0.95rem", color: "#5c5c7a",
           lineHeight: 1.6, fontWeight: 600,
-          whiteSpace: "pre-wrap", margin: 0,
+          whiteSpace: "pre-wrap", 
+          wordBreak: "break-word", /* <--- ESTA ES LA CLAVE PARA EL DESBORDE */
+          margin: 0,
         }}>
           {descripcion}
         </p>

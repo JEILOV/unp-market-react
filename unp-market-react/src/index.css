@@ -3028,3 +3028,47 @@ body {
   from { opacity: 0; transform: translateY(14px); }
   to   { opacity: 1; transform: translateY(0);    }
 }
+/* ════════════════════════════════════════════
+   PANTALLA: PUBLICAR
+   ════════════════════════════════════════════ */
+.publish-container {
+  padding: 24px 20px 100px;
+  background: var(--bg-crema);
+  min-height: 100vh;
+}
+
+.publish-form-card {
+  background: var(--blanco-puro);
+  padding: 24px;
+  border-radius: 28px;
+  box-shadow: 0 8px 30px rgba(15,37,64,0.06);
+  border: 1px solid rgba(15,37,64,0.05);
+}
+
+.publish-title-header {
+  font-size: 1.35rem;
+  font-weight: 900;
+  color: var(--azul-oscuro);
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* Ajuste para el botón publicar (el verde principal) */
+.btn-publish-final {
+  background: var(--verde-marca);
+  color: white;
+  width: 100%;
+  padding: 16px;
+  border-radius: 16px;
+  border: none;
+  font-weight: 900;
+  font-size: 1rem;
+  cursor: pointer;
+  box-shadow: 0 4px 15px rgba(46,107,78,0.25);
+  transition: transform 0.2s, background 0.2s;
+}
+
+.btn-publish-final:hover { background: #255c41; }
+.btn-publish-final:active { transform: scale(0.97); }

@@ -557,36 +557,41 @@ const Perfil = () => {
 
    
 
-      {/* ════════════════════════════════════════════════════
-           INFO: UBICACIÓN + TELÉFONO
+     {/* ════════════════════════════════════════════════════
+           INFO: UBICACIÓN + TELÉFONO (ESTILO BURBUJAS)
       ════════════════════════════════════════════════════ */}
       <div style={{
-        display: "flex", background: "white",
-        borderTop: "1px solid #f1f3f5", borderBottom: "1px solid #f1f3f5",
-        margin: "8px 0",
+        display: "flex",
+        justifyContent: "center",
+        gap: "12px",
+        background: "transparent",
+        margin: "16px 16px 20px",
       }}>
-        {/* Ubicación */}
-        <div style={infoColStyle}>
-          <svg viewBox="0 0 24 24" width="22" height="22" fill="none"
-            stroke="var(--verde-marca)" strokeWidth="2.2" strokeLinecap="round">
+        {/* Burbuja Ubicación */}
+        <div style={{
+          flex: 1, display: "flex", flexDirection: "row", alignItems: "center", justifyContent: "center", gap: "8px",
+          padding: "10px 16px", background: "var(--blanco-puro)", borderRadius: "24px",
+          border: "1px solid rgba(15, 37, 64, 0.06)", boxShadow: "0 4px 12px rgba(15, 37, 64, 0.04)"
+        }}>
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="var(--verde-marca)" strokeWidth="2.2" strokeLinecap="round">
             <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
             <circle cx="12" cy="10" r="3"/>
           </svg>
-          <span style={{ fontSize: "0.82rem", fontWeight: 700, color: "var(--azul-oscuro)" }}>
+          <span style={{ fontSize: "0.85rem", fontWeight: 800, color: "var(--azul-oscuro)", margin: 0 }}>
             {p.ubicacion || "Piura"}
           </span>
         </div>
 
-        {/* Divisor */}
-        <div style={{ width: "1px", background: "#f1f3f5", margin: "12px 0" }} />
-
-        {/* Teléfono */}
-        <div style={infoColStyle}>
-          <svg viewBox="0 0 24 24" width="22" height="22" fill="none"
-            stroke="var(--verde-marca)" strokeWidth="2.2" strokeLinecap="round">
+        {/* Burbuja Teléfono */}
+        <div style={{
+          flex: 1, display: "flex", flexDirection: "row", alignItems: "center", justifyContent: "center", gap: "8px",
+          padding: "10px 16px", background: "var(--blanco-puro)", borderRadius: "24px",
+          border: "1px solid rgba(15, 37, 64, 0.06)", boxShadow: "0 4px 12px rgba(15, 37, 64, 0.04)"
+        }}>
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="var(--verde-marca)" strokeWidth="2.2" strokeLinecap="round">
             <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.61 3.5 2 2 0 0 1 3.6 1.32h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.96a16 16 0 0 0 6.29 6.29l.95-.95a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/>
           </svg>
-          <span style={{ fontSize: "0.82rem", fontWeight: 700, color: "var(--azul-oscuro)" }}>
+          <span style={{ fontSize: "0.85rem", fontWeight: 800, color: "var(--azul-oscuro)", margin: 0 }}>
             {p.telefono || "Sin WhatsApp"}
           </span>
         </div>
@@ -609,7 +614,7 @@ const Perfil = () => {
             </svg>
             <span style={{ fontWeight: 600, fontSize: "0.9rem", color: "var(--azul-oscuro)" }}>Acerca de mí</span>
           </div>
-          <p style={{ margin: 0, fontSize: "0.88rem", color: "#5c5c7a", fontWeight: 600, lineHeight: 1.5 }}>
+         <p style={{ margin: 0, fontSize: "0.88rem", color: "#5c5c7a", fontWeight: 600, lineHeight: 1.5, wordBreak: "break-word" }}>
             {p.acercaDe || "¡Hola! Bienvenido a mi tienda en el campus."}
           </p>
         </div>
@@ -762,12 +767,20 @@ const Perfil = () => {
                   style={{ ...inputStyle, marginTop: "6px" }} />
               </div>
 
-              {/* WhatsApp */}
+             {/* WhatsApp */}
               <div>
                 <label style={labelStyle}>WhatsApp (sin +51)</label>
-                <input value={mTelefono} onChange={(e) => setMTelefono(e.target.value)}
-                  placeholder="Ej: 987654321" type="tel"
-                  style={{ ...inputStyle, marginTop: "6px" }} />
+                <input 
+                  value={mTelefono} 
+                  onChange={(e) => {
+                    const soloNumeros = e.target.value.replace(/\D/g, ''); // Filtra letras
+                    if (soloNumeros.length <= 9) setMTelefono(soloNumeros); // Limita a 9
+                  }}
+                  placeholder="Ej: 987654321" 
+                  type="tel"
+                  maxLength={9}
+                  style={{ ...inputStyle, marginTop: "6px" }} 
+                />
               </div>
 
               {/* Foto de perfil */}
