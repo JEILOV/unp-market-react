@@ -4,7 +4,7 @@ import { useNavigate, useSearchParams }             from "react-router-dom";
 import {
   collection, getDocs, query,
   orderBy, limit, startAfter,
-  where, onSnapshot, writeBatch, doc
+  where, onSnapshot, writeBatch, doc, updateDoc
 } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
 import { db, auth }           from "../services/firebase";
@@ -184,21 +184,30 @@ const Home = () => {
     return () => unsubscribe();
   }, [currentUser]);
 
-  const handleMarcarLeidas = async () => {
-    if (notificaciones.every(n => n.leido)) return;
+  const handleLimpiarNotificaciones = async () => {
+    if (notificaciones.length === 0) return;
     try {
       const batch = writeBatch(db);
       notificaciones.forEach(n => {
-        if (!n.leido) {
-          const ref = doc(db, "notificaciones", n.id);
-          batch.update(ref, { leido: true });
-        }
+        batch.delete(doc(db, "notificaciones", n.id));
       });
       await batch.commit();
-      mostrarToast("Todas las notificaciones leídas");
+      mostrarToast("Notificaciones eliminadas");
     } catch (error) {
-      console.error("Error al marcar leídas:", error);
+      console.error("Error al limpiar notificaciones:", error);
       mostrarToast("Error al procesar", "error");
+    }
+  };
+
+  const handleNotifClick = async (notif) => {
+    try {
+      if (!notif.leido) {
+        await updateDoc(doc(db, "notificaciones", notif.id), { leido: true });
+      }
+    } catch (error) {
+      console.error("Error al marcar notificación:", error);
+    } finally {
+      navigate(`/vendedor?uid=${notif.deUid}`);
     }
   };
 
@@ -464,9 +473,9 @@ const Home = () => {
         <section className="tab-section">
           <div className="tab-section-header">
             <h2 className="tab-section-title" style={{ margin: 0 }}>Notificaciones</h2>
-            {notificaciones.some((n) => !n.leido) && (
-              <button onClick={handleMarcarLeidas} className="btn-mark-read">
-                Marcar todas leídas
+            {notificaciones.length > 0 && (
+              <button onClick={handleLimpiarNotificaciones} className="btn-mark-read">
+                Limpiar notificaciones
               </button>
             )}
           </div>
@@ -485,6 +494,8 @@ const Home = () => {
                   <div
                     key={notif.id}
                     className={`notif-item notif-item--${esFav ? "fav" : "msg"}${notif.leido ? " notif-item--leido" : ""}`}
+                    style={{ cursor: "pointer" }}
+                    onClick={() => handleNotifClick(notif)}
                   >
                     <div className="notif-item-icon">{esFav ? "❤️" : "💬"}</div>
                     <div className="notif-item-body">
@@ -519,10 +530,31 @@ const Home = () => {
           <span className="nav-label">Publicar</span>
         </button>
         <button className={`nav-item${tabActiva === "notifs" ? " active" : ""}`} onClick={() => navigate("/?tab=notifs")} aria-label="Notificaciones">
-          <div className="nav-icon-wrap">
+          <div className="nav-icon-wrap" style={{ position: "relative", display: "inline-flex" }}>
             <svg className="nav-icon" viewBox="0 0 24 24" fill="none" strokeWidth="2.2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+            
+            {/* BADGE ROJO FORZADO */}
             {notificaciones.some(n => !n.leido) && (
-              <span className="nav-notif-badge">{notificaciones.filter(n => !n.leido).length}</span>
+              <span className="nav-notif-badge" style={{
+                position: "absolute", 
+                top: "-4px", 
+                right: "-6px",
+                background: "#ef4444", 
+                color: "white", 
+                fontSize: "0.65rem",
+                fontWeight: 800, 
+                minWidth: "16px", 
+                height: "16px",
+                borderRadius: "50%", 
+                display: "flex", 
+                alignItems: "center",
+                justifyContent: "center", 
+                border: "2px solid #16a34a", /* O usa el color de fondo de tu nav si es azul oscuro: #1e293b */
+                padding: "0 4px",
+                lineHeight: 1
+              }}>
+                {notificaciones.filter(n => !n.leido).length}
+              </span>
             )}
           </div>
           <span className="nav-label">Notifs</span>
