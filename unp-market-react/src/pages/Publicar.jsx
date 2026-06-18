@@ -196,7 +196,7 @@ const Publicar = () => {
 
     if (!perfil.telefono || perfil.telefono.trim().length < 7) {
       setToast({ mensaje: "⚠️ Configura tu WhatsApp en el perfil para publicar.", tipo: "error" });
-      setTimeout(() => navigate("/perfil"), 2000);
+      setTimeout(() => navigate("/perfil", { state: { abrirModalEdicion: true } }), 2000);
       return;
     }
 
@@ -213,7 +213,7 @@ const Publicar = () => {
 
       // Paso 3: Guardar en Firestore
       setBtnTexto("Publicando...");
-      await addDoc(collection(db, "productos"), {
+      const nuevoProdRef = await addDoc(collection(db, "productos"), {
         titulo,
         precio:         parseFloat(precio),
         categoria,
@@ -249,6 +249,7 @@ const Publicar = () => {
                 deNombre:       nombreVendedor || "Un vendedor",
                 tipo:           "nuevo_producto",
                 productoTitulo: titulo,
+                productoId:     nuevoProdRef.id,
                 leido:          false,
                 timestamp:      serverTimestamp(),
               });

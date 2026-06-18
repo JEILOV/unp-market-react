@@ -15,7 +15,7 @@
 // ============================================================
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { useNavigate }                              from "react-router-dom";
+import { useNavigate, useLocation }                 from "react-router-dom";
 import {
   doc, getDoc, setDoc, getDocs,
   collection, query, where,
@@ -198,6 +198,7 @@ const labelStyle = { fontSize: "0.88rem", fontWeight: 600, color: "var(--azul-os
 // ──────────────────────────────────────────────────────────────
 const Perfil = () => {
   const navigate = useNavigate();
+  const location = useLocation();
 
   // ── Datos ──
   const [currentUser,  setCurrentUser]  = useState(null);
@@ -291,6 +292,18 @@ const Perfil = () => {
     });
     return () => unsubscribe();
   }, [currentUser]);
+
+// ──────────────────────────────────────────────────────────────
+  //  OBJETIVO 1: Abrir modal automáticamente si viene de Publicar
+  // ──────────────────────────────────────────────────────────────
+  useEffect(() => {
+    // Solo intentamos abrir el modal SI ya terminó de cargar la base de datos
+    if (!cargando && location.state?.abrirModalEdicion) {
+      abrirModal();
+      // Limpiar el estado de la historia para que no se reabra al recargar
+      window.history.replaceState({}, document.title);
+    }
+  }, [location, cargando]);
 
   // ── Cerrar dropdown al hacer clic fuera ──
   useEffect(() => {

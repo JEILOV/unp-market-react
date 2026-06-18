@@ -446,6 +446,9 @@ const Producto = () => {
               Vendedor de la UNP
             </p>
           </div>
+
+          {/* Chevron: indicador visual de clickeable */}
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#a0a5b9" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginLeft: "auto" }}><polyline points="9 18 15 12 9 6"/></svg>
         </div>
 
         <hr style={{ border: "none", borderTop: "1px solid #f1f3f5", margin: "20px 0" }} />

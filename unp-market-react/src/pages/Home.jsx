@@ -208,7 +208,11 @@ const Home = () => {
     } catch (error) {
       console.error("Error al marcar notificación:", error);
     } finally {
-      navigate(`/vendedor?uid=${notif.deUid}`);
+      if (notif.tipo === "nuevo_producto" && notif.productoId) {
+        navigate(`/producto?id=${notif.productoId}`);
+      } else {
+        navigate(`/vendedor?uid=${notif.deUid}`);
+      }
     }
   };
 
