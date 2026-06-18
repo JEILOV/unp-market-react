@@ -11,6 +11,7 @@
 //    - Tarjetas con botones Editar / Agotar / Borrar
 //    - Modal edición de perfil (campos + imgBB + canvas)
 //    - Bottom nav con "Perfil" activo
+//    - [NUEVO] Verificación de celular por SMS (Firebase Phone Auth)
 // ============================================================
 
 import { useState, useEffect, useRef, useCallback } from "react";
@@ -21,7 +22,11 @@ import {
   updateDoc, deleteDoc, serverTimestamp,
   onSnapshot, orderBy,
 } from "firebase/firestore";
-import { onAuthStateChanged, signOut } from "firebase/auth";
+// PASO 1: Se añaden RecaptchaVerifier, PhoneAuthProvider y linkWithCredential
+import {
+  onAuthStateChanged, signOut,
+  RecaptchaVerifier, PhoneAuthProvider, linkWithCredential,
+} from "firebase/auth";
 import { db, auth }                    from "../services/firebase";
 
 // ──────────────────────────────────────────────────────────────
@@ -185,6 +190,7 @@ const inputStyle = {
   fontWeight: 700, outline: "none", boxSizing: "border-box",
   color: "var(--azul-oscuro)",
 };
+
 const labelStyle = { fontSize: "0.88rem", fontWeight: 600, color: "var(--azul-oscuro)" };
 
 // ──────────────────────────────────────────────────────────────
@@ -217,6 +223,11 @@ const Perfil = () => {
   const [mPortadaFile, setMPortadaFile] = useState(null);
   const [mAvatarPrev,  setMAvatarPrev]  = useState(null);
   const [mPortadaPrev, setMPortadaPrev] = useState(null);
+
+  // PASO 2: Estados para verificación SMS
+  const [esperandoSMS,   setEsperandoSMS]   = useState(false);
+  const [codigoSMS,      setCodigoSMS]      = useState("");
+  const [verificationId, setVerificationId] = useState(null);
 
   const avatarInputRef  = useRef(null);
   const portadaInputRef = useRef(null);
@@ -318,6 +329,10 @@ const Perfil = () => {
     setMAvatarPrev(p.avatar  || null);
     setMPortadaPrev(p.portada || null);
     setDropdownOpen(false);
+    // Resetear estado SMS al abrir
+    setEsperandoSMS(false);
+    setCodigoSMS("");
+    setVerificationId(null);
     setModalOpen(true);
   };
 
@@ -332,78 +347,169 @@ const Perfil = () => {
   };
 
   // ──────────────────────────────────────────────────────────────
-  //  Guardar perfil
+  //  Lógica de guardado real (extraída para reutilizarse)
+  // ──────────────────────────────────────────────────────────────
+  const ejecutarGuardadoReal = async () => {
+    const perfilPrev = perfil || {};
+
+    // Subir imágenes solo si hay archivo nuevo
+    let avatarFinal  = perfilPrev.avatar  || "";
+    let portadaFinal = perfilPrev.portada || "";
+
+    if (mAvatarFile) {
+      const blob = await comprimirImagen(mAvatarFile);
+      avatarFinal = await subirImgBB(blob);
+    }
+    if (mPortadaFile) {
+      const blob = await comprimirImagen(mPortadaFile);
+      portadaFinal = await subirImgBB(blob);
+    }
+
+    const nuevoPerfil = {
+      ...perfilPrev,
+      uid:       currentUser.uid,
+      nombre:    mNombre    || perfilPrev.nombre    || "",
+      bio:       mBio       || perfilPrev.bio       || "",
+      acercaDe:  mAcerca    || perfilPrev.acercaDe  || "",
+      ubicacion: mUbicacion || perfilPrev.ubicacion || "",
+      telefono:  mTelefono.trim() || perfilPrev.telefono || "",
+      avatar:    avatarFinal,
+      portada:   portadaFinal,
+    };
+
+    await setDoc(doc(db, "usuarios", currentUser.uid), nuevoPerfil, { merge: true });
+    localStorage.setItem("unp_user_profile", JSON.stringify(nuevoPerfil));
+    setPerfil(nuevoPerfil);
+    setModalOpen(false);
+    setEsperandoSMS(false);
+    mostrarToast("¡Perfil guardado correctamente!");
+
+    // PARCHE 3 — Propagar avatar, vendedorNombre y telefono a todos los productos del usuario.
+    // Se ejecuta siempre (no solo cuando cambia el avatar) para mantener los datos de vendedor
+    // sincronizados en el feed cuando el usuario edita su nombre o WhatsApp.
+    try {
+      const q    = query(collection(db, "productos"), where("userUid", "==", currentUser.uid));
+      const snap = await getDocs(q);
+      if (!snap.empty) {
+        await Promise.all(snap.docs.map((d) =>
+          updateDoc(doc(db, "productos", d.id), {
+            avatarVendedor: avatarFinal,
+            vendedorNombre: nuevoPerfil.nombre   || "",
+            vendedor:       nuevoPerfil.nombre   || "",   // campo legacy
+            telefono:       nuevoPerfil.telefono || "",
+          })
+        ));
+        // Reflejar los cambios en el estado local sin re-fetch
+        setProductos((prev) => prev.map((p) => ({
+          ...p,
+          avatarVendedor: avatarFinal,
+          vendedorNombre: nuevoPerfil.nombre   || "",
+          vendedor:       nuevoPerfil.nombre   || "",
+          telefono:       nuevoPerfil.telefono || "",
+        })));
+        mostrarToast(`✓ Perfil actualizado en ${snap.size} publicación${snap.size !== 1 ? "es" : ""}`);
+      }
+    } catch (syncErr) {
+      console.warn("Error al sincronizar productos:", syncErr);
+    }
+  };
+
+  // ──────────────────────────────────────────────────────────────
+  //  PASO 3: handleGuardar refactorizado
   // ──────────────────────────────────────────────────────────────
   const handleGuardar = async () => {
     if (!currentUser) return;
-    setGuardando(true);
 
-    try {
-      const perfilPrev = perfil || {};
+    const telefonoActual = (perfil?.telefono || "").trim();
+    const telefonoNuevo  = mTelefono.trim();
 
-      // Subir imágenes solo si hay archivo nuevo
-      let avatarFinal  = perfilPrev.avatar  || "";
-      let portadaFinal = perfilPrev.portada || "";
-
-      if (mAvatarFile) {
-        const blob = await comprimirImagen(mAvatarFile);
-        avatarFinal = await subirImgBB(blob);
-      }
-      if (mPortadaFile) {
-        const blob = await comprimirImagen(mPortadaFile);
-        portadaFinal = await subirImgBB(blob);
-      }
-
-      const nuevoPerfil = {
-        ...perfilPrev,
-        uid:       currentUser.uid,
-        nombre:    mNombre    || perfilPrev.nombre    || "",
-        bio:       mBio       || perfilPrev.bio       || "",
-        acercaDe:  mAcerca    || perfilPrev.acercaDe  || "",
-        ubicacion: mUbicacion || perfilPrev.ubicacion || "",
-        telefono:  mTelefono.trim() || perfilPrev.telefono || "",
-        avatar:    avatarFinal,
-        portada:   portadaFinal,
-      };
-
-      await setDoc(doc(db, "usuarios", currentUser.uid), nuevoPerfil, { merge: true });
-      localStorage.setItem("unp_user_profile", JSON.stringify(nuevoPerfil));
-      setPerfil(nuevoPerfil);
-      setModalOpen(false);
-      mostrarToast("¡Perfil guardado correctamente!");
-
-      // PARCHE 3 — Propagar avatar, vendedorNombre y telefono a todos los productos del usuario.
-      // Se ejecuta siempre (no solo cuando cambia el avatar) para mantener los datos de vendedor
-      // sincronizados en el feed cuando el usuario edita su nombre o WhatsApp.
+    // Si el teléfono está vacío o no cambió → guardado normal
+    if (!telefonoNuevo || telefonoNuevo === telefonoActual) {
+      setGuardando(true);
       try {
-        const q    = query(collection(db, "productos"), where("userUid", "==", currentUser.uid));
-        const snap = await getDocs(q);
-        if (!snap.empty) {
-          await Promise.all(snap.docs.map((d) =>
-            updateDoc(doc(db, "productos", d.id), {
-              avatarVendedor: avatarFinal,
-              vendedorNombre: nuevoPerfil.nombre   || "",
-              vendedor:       nuevoPerfil.nombre   || "",   // campo legacy
-              telefono:       nuevoPerfil.telefono || "",
-            })
-          ));
-          // Reflejar los cambios en el estado local sin re-fetch
-          setProductos((prev) => prev.map((p) => ({
-            ...p,
-            avatarVendedor: avatarFinal,
-            vendedorNombre: nuevoPerfil.nombre   || "",
-            vendedor:       nuevoPerfil.nombre   || "",
-            telefono:       nuevoPerfil.telefono || "",
-          })));
-          mostrarToast(`✓ Perfil actualizado en ${snap.size} publicación${snap.size !== 1 ? "es" : ""}`);
-        }
-      } catch (syncErr) {
-        console.warn("Error al sincronizar productos:", syncErr);
+        await ejecutarGuardadoReal();
+      } catch (err) {
+        console.error(err);
+        mostrarToast("Error al guardar el perfil", "error");
+      } finally {
+        setGuardando(false);
+      }
+      return;
+    }
+
+    // El teléfono es nuevo o ha cambiado → verificar por SMS primero
+    setGuardando(true);
+    try {
+      // Limpiar instancia anterior si existe
+      if (window.recaptchaVerifier) {
+        window.recaptchaVerifier.clear();
+        window.recaptchaVerifier = null;
       }
 
+     // Limpiar cualquier reCAPTCHA anterior atrapado en la memoria
+      if (window.recaptchaVerifier) {
+        window.recaptchaVerifier.clear();
+        window.recaptchaVerifier = null;
+      }
+      
+      // Crear uno nuevo fresco
+      window.recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', { size: 'invisible' });
+
+      const provider = new PhoneAuthProvider(auth);
+      const verId    = await provider.verifyPhoneNumber(
+        "+51" + telefonoNuevo,
+        window.recaptchaVerifier
+      );
+
+      setVerificationId(verId);
+      setEsperandoSMS(true);
     } catch (err) {
-      console.error(err);
-      mostrarToast("Error al guardar el perfil", "error");
+      console.error("Error al enviar SMS:", err);
+      mostrarToast("No se pudo enviar el SMS. Verifica el número.", "error");
+      // Limpiar recaptcha si falla
+      if (window.recaptchaVerifier) {
+        window.recaptchaVerifier.clear();
+        window.recaptchaVerifier = null;
+      }
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  // ──────────────────────────────────────────────────────────────
+  //  PASO 4: Verificar código SMS y guardar
+  // ──────────────────────────────────────────────────────────────
+  const confirmarSMSYGuardar = async () => {
+    if (!currentUser || !verificationId || !codigoSMS.trim()) {
+      mostrarToast("Ingresa el código de 6 dígitos", "error");
+      return;
+    }
+    setGuardando(true);
+    try {
+      // 1. Crear la credencial con el código ingresado
+      const credential = PhoneAuthProvider.credential(verificationId, codigoSMS.trim());
+
+      // 2. Vincular el teléfono a la cuenta de Google actual
+      await linkWithCredential(currentUser, credential);
+
+      // 3. Si el vínculo es exitoso, ejecutar el guardado real
+      await ejecutarGuardadoReal();
+      mostrarToast("📱 Teléfono verificado y perfil guardado");
+    } catch (err) {
+      console.error("Error al verificar SMS:", err);
+      if (err.code === "auth/invalid-verification-code") {
+        mostrarToast("Código incorrecto. Inténtalo de nuevo.", "error");
+      } else if (err.code === "auth/provider-already-linked") {
+        // El teléfono ya está vinculado → guardar igual
+        try {
+          await ejecutarGuardadoReal();
+        } catch (saveErr) {
+          console.error(saveErr);
+          mostrarToast("Error al guardar el perfil", "error");
+        }
+      } else {
+        mostrarToast("Error al verificar. Intenta enviar el SMS de nuevo.", "error");
+      }
     } finally {
       setGuardando(false);
     }
@@ -582,8 +688,6 @@ const Perfil = () => {
           </div>
         </div>
       </div>
-
-   
 
      {/* ════════════════════════════════════════════════════
            INFO: UBICACIÓN + TELÉFONO (ESTILO BURBUJAS)
@@ -767,123 +871,219 @@ const Perfil = () => {
             maxHeight: "90vh", overflowY: "auto",
             boxSizing: "border-box",
           }}>
-            <h2 style={{ margin: "0 0 20px", fontSize: "1.2rem", fontWeight: 700, color: "var(--azul-oscuro)" }}>
-              Editar Mi Perfil
-            </h2>
+            {/* PASO 5: div invisible para reCAPTCHA */}
+            <div id="recaptcha-container"></div>
 
-            <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+            {/* ── PASO 5: Renderizado condicional ── */}
+            {!esperandoSMS ? (
+              /* ══ VISTA NORMAL: formulario de perfil ══ */
+              <>
+                <h2 style={{ margin: "0 0 20px", fontSize: "1.2rem", fontWeight: 700, color: "var(--azul-oscuro)" }}>
+                  Editar Mi Perfil
+                </h2>
 
-              {/* Nombre */}
-              <div>
-                <label style={labelStyle}>Nombre Completo</label>
-                <input value={mNombre} onChange={(e) => setMNombre(e.target.value)}
-                  style={{ ...inputStyle, marginTop: "6px" }} />
-              </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
 
-              {/* Bio / Carrera */}
-              <div>
-                <label style={labelStyle}>Carrera / Título corto</label>
-                <input value={mBio} onChange={(e) => setMBio(e.target.value)}
-                  placeholder="Ej: Ing. Informático"
-                  style={{ ...inputStyle, marginTop: "6px" }} />
-              </div>
+                  {/* Nombre */}
+                  <div>
+                    <label style={labelStyle}>Nombre Completo</label>
+                    <input value={mNombre} onChange={(e) => setMNombre(e.target.value)}
+                      style={{ ...inputStyle, marginTop: "6px" }} />
+                  </div>
 
-              {/* Acerca de mí */}
-              <div>
-                <label style={labelStyle}>Acerca de mí</label>
-                <textarea value={mAcerca} onChange={(e) => setMAcerca(e.target.value)}
-                  rows={3} style={{ ...inputStyle, marginTop: "6px", resize: "none" }} />
-              </div>
+                  {/* Bio / Carrera */}
+                  <div>
+                    <label style={labelStyle}>Carrera / Título corto</label>
+                    <input value={mBio} onChange={(e) => setMBio(e.target.value)}
+                      placeholder="Ej: Ing. Informático"
+                      style={{ ...inputStyle, marginTop: "6px" }} />
+                  </div>
 
-              {/* Ubicación */}
-              <div>
-                <label style={labelStyle}>Ubicación actual</label>
-                <input value={mUbicacion} onChange={(e) => setMUbicacion(e.target.value)}
-                  style={{ ...inputStyle, marginTop: "6px" }} />
-              </div>
+                  {/* Acerca de mí */}
+                  <div>
+                    <label style={labelStyle}>Acerca de mí</label>
+                    <textarea value={mAcerca} onChange={(e) => setMAcerca(e.target.value)}
+                      rows={3} style={{ ...inputStyle, marginTop: "6px", resize: "none" }} />
+                  </div>
 
-             {/* WhatsApp */}
-              <div>
-                <label style={labelStyle}>WhatsApp (sin +51)</label>
-                <input 
-                  value={mTelefono} 
-                  onChange={(e) => {
-                    const soloNumeros = e.target.value.replace(/\D/g, ''); // Filtra letras
-                    if (soloNumeros.length <= 9) setMTelefono(soloNumeros); // Limita a 9
-                  }}
-                  placeholder="Ej: 987654321" 
-                  type="tel"
-                  maxLength={9}
-                  style={{ ...inputStyle, marginTop: "6px" }} 
-                />
-              </div>
+                  {/* Ubicación */}
+                  <div>
+                    <label style={labelStyle}>Ubicación actual</label>
+                    <input value={mUbicacion} onChange={(e) => setMUbicacion(e.target.value)}
+                      style={{ ...inputStyle, marginTop: "6px" }} />
+                  </div>
 
-              {/* Foto de perfil */}
-              <div>
-                <label style={labelStyle}>Foto de Perfil</label>
-                <input type="file" accept="image/*" ref={avatarInputRef} style={{ display: "none" }}
-                  onChange={(e) => handleFileSelect("avatar", e.target.files[0])} />
-                <button onClick={() => avatarInputRef.current?.click()} style={filePickerStyle}>
-                  {mAvatarPrev
-                    ? <img src={mAvatarPrev} alt="Avatar" style={{ width: "40px", height: "40px", borderRadius: "50%", objectFit: "cover" }} />
-                    : <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#a0a5b9" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-                  }
-                  <span style={{ color: "#5c5c7a", fontWeight: 700, fontSize: "0.9rem" }}>
-                    {mAvatarPrev ? "Cambiar foto de perfil" : "Subir foto de perfil"}
-                  </span>
-                </button>
-              </div>
+                  {/* WhatsApp */}
+                  <div>
+                    <label style={labelStyle}>WhatsApp (sin +51)</label>
+                    <input
+                      value={mTelefono}
+                      onChange={(e) => {
+                        const soloNumeros = e.target.value.replace(/\D/g, '');
+                        if (soloNumeros.length <= 9) setMTelefono(soloNumeros);
+                      }}
+                      placeholder="Ej: 987654321"
+                      type="tel"
+                      maxLength={9}
+                      style={{ ...inputStyle, marginTop: "6px" }}
+                    />
+                  </div>
 
-              {/* Imagen de portada */}
-              <div>
-                <label style={labelStyle}>Imagen de Portada (Banner)</label>
-                <input type="file" accept="image/*" ref={portadaInputRef} style={{ display: "none" }}
-                  onChange={(e) => handleFileSelect("portada", e.target.files[0])} />
-                {mPortadaPrev && (
-                  <img src={mPortadaPrev} alt="Banner"
-                    style={{ width: "100%", height: "80px", objectFit: "cover", borderRadius: "12px", marginBottom: "6px" }} />
-                )}
-                <button onClick={() => portadaInputRef.current?.click()} style={filePickerStyle}>
-                  <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#a0a5b9" strokeWidth="2">
-                    <rect x="3" y="3" width="18" height="18" rx="2"/>
-                    <polyline points="21 15 16 10 5 21"/>
+                  {/* Foto de perfil */}
+                  <div>
+                    <label style={labelStyle}>Foto de Perfil</label>
+                    <input type="file" accept="image/*" ref={avatarInputRef} style={{ display: "none" }}
+                      onChange={(e) => handleFileSelect("avatar", e.target.files[0])} />
+                    <button onClick={() => avatarInputRef.current?.click()} style={filePickerStyle}>
+                      {mAvatarPrev
+                        ? <img src={mAvatarPrev} alt="Avatar" style={{ width: "40px", height: "40px", borderRadius: "50%", objectFit: "cover" }} />
+                        : <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#a0a5b9" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                      }
+                      <span style={{ color: "#5c5c7a", fontWeight: 700, fontSize: "0.9rem" }}>
+                        {mAvatarPrev ? "Cambiar foto de perfil" : "Subir foto de perfil"}
+                      </span>
+                    </button>
+                  </div>
+
+                  {/* Imagen de portada */}
+                  <div>
+                    <label style={labelStyle}>Imagen de Portada (Banner)</label>
+                    <input type="file" accept="image/*" ref={portadaInputRef} style={{ display: "none" }}
+                      onChange={(e) => handleFileSelect("portada", e.target.files[0])} />
+                    {mPortadaPrev && (
+                      <img src={mPortadaPrev} alt="Banner"
+                        style={{ width: "100%", height: "80px", objectFit: "cover", borderRadius: "12px", marginBottom: "6px" }} />
+                    )}
+                    <button onClick={() => portadaInputRef.current?.click()} style={filePickerStyle}>
+                      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#a0a5b9" strokeWidth="2">
+                        <rect x="3" y="3" width="18" height="18" rx="2"/>
+                        <polyline points="21 15 16 10 5 21"/>
+                      </svg>
+                      <span style={{ color: "#5c5c7a", fontWeight: 700, fontSize: "0.9rem" }}>
+                        {mPortadaPrev ? "Cambiar imagen de portada" : "Subir imagen de portada"}
+                      </span>
+                    </button>
+                  </div>
+
+                </div>
+
+                {/* Botones del formulario normal */}
+                <div style={{ display: "flex", gap: "12px", marginTop: "24px" }}>
+                  <button
+                    onClick={() => setModalOpen(false)}
+                    style={{
+                      flex: 1, padding: "14px", borderRadius: "14px",
+                      background: "#f1f3f5", border: "none", cursor: "pointer",
+                      fontWeight: 600, fontSize: "0.95rem", color: "#5c5c7a",
+                      fontFamily: "'Nunito', sans-serif",
+                    }}
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={handleGuardar}
+                    disabled={guardando}
+                    style={{
+                      flex: 1.5, padding: "14px", borderRadius: "14px",
+                      background: guardando ? "#6b9e74" : "var(--verde-marca)",
+                      border: "none", cursor: guardando ? "not-allowed" : "pointer",
+                      fontWeight: 600, fontSize: "0.95rem", color: "white",
+                      fontFamily: "'Nunito', sans-serif",
+                      boxShadow: "0 4px 15px rgba(58,125,68,0.3)",
+                    }}
+                  >
+                    {guardando ? "Enviando SMS..." : "Guardar Perfil"}
+                  </button>
+                </div>
+              </>
+            ) : (
+              /* ══ VISTA SMS: verificar código ══ */
+              <>
+                {/* Icono de teléfono */}
+                <div style={{
+                  width: "60px", height: "60px", borderRadius: "50%",
+                  background: "var(--bg-crema)", border: "2px solid var(--verde-marca)",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  margin: "0 auto 16px",
+                }}>
+                  <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="var(--verde-marca)" strokeWidth="2.2" strokeLinecap="round">
+                    <rect x="5" y="2" width="14" height="20" rx="2" ry="2"/>
+                    <line x1="12" y1="18" x2="12.01" y2="18"/>
                   </svg>
-                  <span style={{ color: "#5c5c7a", fontWeight: 700, fontSize: "0.9rem" }}>
-                    {mPortadaPrev ? "Cambiar imagen de portada" : "Subir imagen de portada"}
+                </div>
+
+                <h2 style={{ margin: "0 0 8px", fontSize: "1.15rem", fontWeight: 700, color: "var(--azul-oscuro)", textAlign: "center" }}>
+                  Verifica tu número
+                </h2>
+
+                <p style={{
+                  margin: "0 0 24px", fontSize: "0.88rem", fontWeight: 600,
+                  color: "#5c5c7a", textAlign: "center", lineHeight: 1.5,
+                }}>
+                  Te enviamos un código por SMS al{" "}
+                  <span style={{ color: "var(--azul-oscuro)", fontWeight: 800 }}>
+                    +51 {mTelefono}
                   </span>
-                </button>
-              </div>
+                </p>
 
-            </div>
+                {/* Input código SMS */}
+                <div style={{ marginBottom: "20px" }}>
+                  <label style={labelStyle}>Código de 6 dígitos</label>
+                  <input
+                    value={codigoSMS}
+                    onChange={(e) => {
+                      const soloNums = e.target.value.replace(/\D/g, "");
+                      if (soloNums.length <= 6) setCodigoSMS(soloNums);
+                    }}
+                    placeholder="_ _ _ _ _ _"
+                    type="tel"
+                    maxLength={6}
+                    style={{
+                      ...inputStyle,
+                      marginTop: "8px",
+                      fontSize: "1.4rem",
+                      letterSpacing: "0.35em",
+                      textAlign: "center",
+                    }}
+                    autoFocus
+                  />
+                </div>
 
-            {/* Botones */}
-            <div style={{ display: "flex", gap: "12px", marginTop: "24px" }}>
-              <button
-                onClick={() => setModalOpen(false)}
-                style={{
-                  flex: 1, padding: "14px", borderRadius: "14px",
-                  background: "#f1f3f5", border: "none", cursor: "pointer",
-                  fontWeight: 600, fontSize: "0.95rem", color: "#5c5c7a",
-                  fontFamily: "'Nunito', sans-serif",
-                }}
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={handleGuardar}
-                disabled={guardando}
-                style={{
-                  flex: 1.5, padding: "14px", borderRadius: "14px",
-                  background: guardando ? "#6b9e74" : "var(--verde-marca)",
-                  border: "none", cursor: guardando ? "not-allowed" : "pointer",
-                  fontWeight: 600, fontSize: "0.95rem", color: "white",
-                  fontFamily: "'Nunito', sans-serif",
-                  boxShadow: "0 4px 15px rgba(58,125,68,0.3)",
-                }}
-              >
-                {guardando ? "Guardando..." : "Guardar Perfil"}
-              </button>
-            </div>
+                {/* Botones verificación */}
+                <div style={{ display: "flex", gap: "12px" }}>
+                  <button
+                    onClick={() => {
+                      setEsperandoSMS(false);
+                      setCodigoSMS("");
+                      setVerificationId(null);
+                    }}
+                    style={{
+                      flex: 1, padding: "14px", borderRadius: "14px",
+                      background: "#f1f3f5", border: "none", cursor: "pointer",
+                      fontWeight: 600, fontSize: "0.95rem", color: "#5c5c7a",
+                      fontFamily: "'Nunito', sans-serif",
+                    }}
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={confirmarSMSYGuardar}
+                    disabled={guardando || codigoSMS.length < 6}
+                    style={{
+                      flex: 1.5, padding: "14px", borderRadius: "14px",
+                      background: (guardando || codigoSMS.length < 6) ? "#6b9e74" : "var(--verde-marca)",
+                      border: "none",
+                      cursor: (guardando || codigoSMS.length < 6) ? "not-allowed" : "pointer",
+                      fontWeight: 600, fontSize: "0.95rem", color: "white",
+                      fontFamily: "'Nunito', sans-serif",
+                      boxShadow: "0 4px 15px rgba(58,125,68,0.3)",
+                    }}
+                  >
+                    {guardando ? "Verificando..." : "Verificar y Guardar"}
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}
