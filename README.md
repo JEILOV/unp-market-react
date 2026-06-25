@@ -85,7 +85,7 @@ The focus was not only building functionality but improving usability for real s
 
 ## Live Demo
 
-[Open Project](https://unp-market.vercel.app)
+[Open Project](https://unp-market-react.vercel.app/)
 
 ---
 
