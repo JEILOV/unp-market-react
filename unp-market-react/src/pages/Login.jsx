@@ -7,8 +7,9 @@ import {
   signOut,
   onAuthStateChanged,
 } from "firebase/auth";
-import { doc, getDoc, setDoc } from "firebase/firestore";
-import { db, auth } from "../services/firebase";
+import { auth } from "../services/firebase";
+import { obtenerOCrearPerfilUsuario, sincronizarFavoritos } from "../services/userService";
+import { obtenerFavoritos, guardarFavoritos, fusionarFavoritos } from "../utils/favoritesStorage";
 
 // ──────────────────────────────────────────────────────────────
 //  CONSTANTES Y RECURSOS

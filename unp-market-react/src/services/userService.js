@@ -1,16 +1,26 @@
 import {
-  doc, getDoc,
+  doc, getDoc, setDoc,
   collection, query, where, getDocs,
   updateDoc, arrayUnion, arrayRemove,
 } from "firebase/firestore";
 import { db } from "./firebase";
 
+/**
+ * Obtiene el perfil de un usuario/vendedor por su UID.
+ * @param {string} uid
+ * @returns {Promise<Object|null>} Los datos del perfil, o null si no existe.
+ */
 export const obtenerPerfilVendedor = async (uid) => {
   if (!uid) return null;
   const snap = await getDoc(doc(db, "usuarios", uid));
   return snap.exists() ? snap.data() : null;
 };
 
+/**
+ * Obtiene todos los productos publicados por un vendedor.
+ * @param {string} uid
+ * @returns {Promise<Array>} Lista de productos con su id.
+ */
 export const obtenerProductosPorVendedor = async (uid) => {
   if (!uid) return [];
   const q = query(collection(db, "productos"), where("userUid", "==", uid));
@@ -18,14 +28,67 @@ export const obtenerProductosPorVendedor = async (uid) => {
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 };
 
+/**
+ * Agrega al usuario actual a la lista de seguidores de un vendedor.
+ * @param {string} vendedorUid
+ * @param {string} miUid
+ */
 export const seguirVendedor = async (vendedorUid, miUid) => {
   await updateDoc(doc(db, "usuarios", vendedorUid), {
     seguidores: arrayUnion(miUid),
   });
 };
 
+/**
+ * Quita al usuario actual de la lista de seguidores de un vendedor.
+ * @param {string} vendedorUid
+ * @param {string} miUid
+ */
 export const dejarDeSeguirVendedor = async (vendedorUid, miUid) => {
   await updateDoc(doc(db, "usuarios", vendedorUid), {
     seguidores: arrayRemove(miUid),
   });
+};
+
+/**
+ * Obtiene el perfil Firestore de un usuario recién autenticado con Google.
+ * Si es su primera vez, crea el documento con datos por defecto.
+ *
+ * @param {import("firebase/auth").User} user  Usuario de Firebase Auth
+ * @returns {Promise<{perfil: Object, favoritosGuardados: string[]}>}
+ */
+export const obtenerOCrearPerfilUsuario = async (user) => {
+  const userRef = doc(db, "usuarios", user.uid);
+  const snap = await getDoc(userRef);
+
+  const perfilBase = {
+    uid: user.uid,
+    nombre: user.displayName || "Estudiante UNP",
+    email: user.email,
+    avatar: user.photoURL || "",
+    ubicacion: "Piura",
+    bio: "Estudiante de la UNP",
+    acercaDe: "¡Hola! Bienvenido a mi tienda en el campus.",
+    telefono: "",
+  };
+
+  if (!snap.exists()) {
+    await setDoc(userRef, perfilBase);
+    return { perfil: perfilBase, favoritosGuardados: [] };
+  }
+
+  const datosGuardados = snap.data();
+  return {
+    perfil: { ...perfilBase, ...datosGuardados },
+    favoritosGuardados: datosGuardados.favoritos || [],
+  };
+};
+
+/**
+ * Persiste el array de favoritos del usuario en su documento de Firestore.
+ * @param {string} uid
+ * @param {string[]} favoritos
+ */
+export const sincronizarFavoritos = async (uid, favoritos) => {
+  await setDoc(doc(db, "usuarios", uid), { favoritos }, { merge: true });
 };
