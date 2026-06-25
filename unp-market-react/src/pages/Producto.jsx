@@ -1,43 +1,18 @@
 // src/pages/Producto.jsx
-// ============================================================
-//  UNP Market — Detalle de Producto
-//
-//  Migra producto.html conservando layout y lógica exactos:
-//    - useSearchParams para leer ?id=
-//    - Fetch a Firestore (colección "productos")
-//    - Botón Volver con useNavigate(-1)
-//    - Imagen full-width + chip categoría superpuesto
-//    - Panel blanco con border-radius (solapado sobre la imagen)
-//    - Título + badge precio en la misma línea
-//    - Badge "Verificado" amarillo
-//    - Tarjeta vendedor (sin onClick — Perfil aún no migrado)
-//    - Descripción con white-space: pre-wrap
-//    - Botón Compartir (navigator.share + fallback clipboard)
-//    - Bottom bar fija: corazón (favoritos localStorage) + WhatsApp
-//    - Estado Agotado: overlay + botón WA deshabilitado
-//    - Toast local auto-dismiss
-// ============================================================
-
 import { useState, useEffect, useCallback } from "react";
-import { useNavigate, useSearchParams }      from "react-router-dom";
-import { doc, setDoc }                       from "firebase/firestore";
-import { db }                                from "../services/firebase";
-import { useAuth }                           from "../context/AuthContext";
-import { obtenerProductoPorId }              from "../services/productService";
-import { crearNotificacion }                 from "../services/notificationService";
-// ──────────────────────────────────────────────────────────────
-//  CONSTANTES
-// ──────────────────────────────────────────────────────────────
+import { useNavigate, useSearchParams }     from "react-router-dom";
+import { useAuth }                          from "../context/AuthContext";
+import { obtenerProductoPorId }             from "../services/productService";
+import { crearNotificacion }               from "../services/notificationService";
+import { useFavorites }                     from "../hooks/useFavorites";
+
+// ── Constantes ───────────────────────────────────────────────
 const ICONOS_CAT = {
   dulces: "🍰", bebidas: "🥤", salados: "🍔",
   servicios: "🔧", materiales: "📚",
 };
 
-
-
-// ──────────────────────────────────────────────────────────────
-//  SUB-COMPONENTE: Toast
-// ──────────────────────────────────────────────────────────────
+// ── Sub-componente: Toast ────────────────────────────────────
 const Toast = ({ mensaje }) => (
   <div style={{
     background: "#1e293b", color: "white",
@@ -51,20 +26,18 @@ const Toast = ({ mensaje }) => (
   </div>
 );
 
-// ──────────────────────────────────────────────────────────────
-//  COMPONENTE PRINCIPAL
-// ──────────────────────────────────────────────────────────────
+// ── Componente principal ─────────────────────────────────────
 const Producto = () => {
-  const navigate                  = useNavigate();
-  const [searchParams]            = useSearchParams();
-  const productoId                = searchParams.get("id");
+  const navigate               = useNavigate();
+  const [searchParams]         = useSearchParams();
+  const productoId             = searchParams.get("id");
 
-  const [producto,   setProducto]   = useState(null);
-  const [cargando,   setCargando]   = useState(true);
-  const [noExiste,   setNoExiste]   = useState(false);
-  const [esFavorito, setEsFavorito] = useState(false);
-  const [toasts,     setToasts]     = useState([]);
-const { user: currentUser, favoritos, actualizarFavoritos } = useAuth();
+  const [producto, setProducto] = useState(null);
+  const [cargando, setCargando] = useState(true);
+  const [noExiste, setNoExiste] = useState(false);
+  const [toasts,   setToasts]   = useState([]);
+
+  const { user: currentUser } = useAuth();
 
   // ── Redirigir si no hay id en URL ──
   useEffect(() => {
@@ -79,17 +52,11 @@ const { user: currentUser, favoritos, actualizarFavoritos } = useAuth();
     const cargar = async () => {
       setCargando(true);
       try {
-       const data = await obtenerProductoPorId(productoId);
-if (cancelado) return;
-if (data) {
-  setProducto(data);
-  setEsFavorito(favoritos.has(data.id));
-} else {
-  setNoExiste(true);
-}
-      } catch (err) {
-        console.error(err);
-        setNoExiste(true);
+        const data = await obtenerProductoPorId(productoId);
+        if (cancelado) return;
+        data ? setProducto(data) : setNoExiste(true);
+      } catch {
+        if (!cancelado) setNoExiste(true);
       } finally {
         if (!cancelado) setCargando(false);
       }
@@ -106,58 +73,33 @@ if (data) {
     setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 3000);
   }, []);
 
-  // ── Toggle Favorito ──
-  const handleFavorito = async () => {
-  const eraFav  = favoritos.has(productoId);
-  const nuevos  = new Set(favoritos);
-  eraFav ? nuevos.delete(productoId) : nuevos.add(productoId);
-
-  // ✅ Contexto actualiza localStorage + estado global
-  actualizarFavoritos(nuevos);
-  setEsFavorito(!eraFav);
-  mostrarToast(eraFav ? "Eliminado de favoritos" : "¡Guardado en favoritos! ❤️");
-
-  // Sincronizar con Firestore si hay sesión
-  if (currentUser) {
-    try {
-      await setDoc(
-        doc(db, "usuarios", currentUser.uid),
-        { favoritos: [...nuevos] },
-        { merge: true }
-      );
-    } catch (err) {
-      console.warn("[Producto] Error al sincronizar favoritos:", err);
-    }
-  }
-
-  if (!eraFav && producto?.userUid) {
-    await crearNotificacion({
-      paraUid:        producto.userUid,
-      deUid:          currentUser?.uid,
-      deNombre:       currentUser?.displayName,
-      tipo:           "favorito",
-      productoId,
-      productoTitulo: producto.titulo,
-    });
-  }
-};
+  // ── Hook: Favoritos ──────────────────────────────────────
+  // Reemplaza: useState(esFavorito) + handleFavorito inline con
+  // setDoc, sincronizarFavoritos y crearNotificacion mezclados
+  const { esFavorito, toggleFavorito } = useFavorites({
+    productoId,
+    vendedorUid:    producto?.userUid,
+    vendedorNombre: producto?.vendedorNombre,
+    productoTitulo: producto?.titulo,
+    onToast:        mostrarToast,
+  });
 
   // ── WhatsApp ──
   const handleWhatsApp = async () => {
     if (!producto?.telefono) return;
-    const num    = producto.telefono.replace(/\D/g, "");
-    const final  = num.startsWith("51") ? num : "51" + num;
-    const msg    = `¡Hola ${producto.vendedor || ""}! Vi tu publicación de "${producto.titulo}" en UNP Market y me gustaría comprarlo.`;
+    const num   = producto.telefono.replace(/\D/g, "");
+    const final = num.startsWith("51") ? num : "51" + num;
+    const msg   = `¡Hola ${producto.vendedor || ""}! Vi tu publicación de "${producto.titulo}" en UNP Market y me gustaría comprarlo.`;
     window.open(`https://wa.me/${final}?text=${encodeURIComponent(msg)}`, "_blank", "noopener,noreferrer");
 
-  await crearNotificacion({
-  paraUid: producto.userUid,
-  deUid: currentUser?.uid,
-  deNombre: currentUser?.displayName,
-  tipo: "contacto",
-  productoId,
-  productoTitulo: producto.titulo,
-});
+    await crearNotificacion({
+      paraUid:        producto.userUid,
+      deUid:          currentUser?.uid,
+      deNombre:       currentUser?.displayName,
+      tipo:           "contacto",
+      productoId,
+      productoTitulo: producto.titulo,
+    });
   };
 
   // ── Compartir ──
@@ -181,9 +123,7 @@ if (data) {
     }
   };
 
-  // ──────────────────────────────────────────────────────────────
-  //  ESTADO: Cargando
-  // ──────────────────────────────────────────────────────────────
+  // ── Estado: Cargando ────────────────────────────────────
   if (cargando) {
     return (
       <div style={{
@@ -196,9 +136,7 @@ if (data) {
     );
   }
 
-  // ──────────────────────────────────────────────────────────────
-  //  ESTADO: No existe
-  // ──────────────────────────────────────────────────────────────
+  // ── Estado: No existe ───────────────────────────────────
   if (noExiste || !producto) {
     return (
       <div style={{
@@ -225,22 +163,18 @@ if (data) {
     );
   }
 
-  // ──────────────────────────────────────────────────────────────
-  //  Derivados
-  // ──────────────────────────────────────────────────────────────
+  // ── Derivados ───────────────────────────────────────────
   const {
     titulo, precio, imagen, categoria, descripcion,
     vendedor: nombreVendedor = "Vendedor UNP",
     avatarVendedor, telefono, estado,
   } = producto;
 
-  const estaAgotado    = (estado || "").toLowerCase() === "agotado";
-  const tieneWA        = telefono && telefono.trim().length >= 7;
-  const emoji          = ICONOS_CAT[(categoria || "").toLowerCase()] || "📦";
+  const estaAgotado = (estado || "").toLowerCase() === "agotado";
+  const tieneWA     = telefono && telefono.trim().length >= 7;
+  const emoji       = ICONOS_CAT[(categoria || "").toLowerCase()] || "📦";
 
-  // ──────────────────────────────────────────────────────────────
-  //  RENDER PRINCIPAL
-  // ──────────────────────────────────────────────────────────────
+  // ── Render ──────────────────────────────────────────────
   return (
     <div
       className="app-shell"
@@ -258,7 +192,7 @@ if (data) {
           overflow: "hidden",
         }}
       >
-        {/* Botón Volver — flotante */}
+        {/* Botón Volver */}
         <button
           onClick={() => navigate(-1)}
           aria-label="Volver"
@@ -318,7 +252,7 @@ if (data) {
           </div>
         )}
 
-        {/* Chip Categoría — esquina inferior izquierda */}
+        {/* Chip Categoría */}
         <span style={{
           position: "absolute", bottom: "35px", left: "20px",
           background: "rgba(0,0,0,0.6)", color: "white",
@@ -331,7 +265,7 @@ if (data) {
         </span>
       </div>
 
-      {/* ── PANEL BLANCO (solapado sobre imagen) ── */}
+      {/* ── PANEL BLANCO ── */}
       <div style={{
         background: "white",
         borderRadius: "30px 30px 0 0",
@@ -364,16 +298,13 @@ if (data) {
           padding: "5px 12px", borderRadius: "12px",
           fontSize: "0.75rem", fontWeight: 600, marginTop: "12px",
         }}>
-          <span style={{
-            width: "6px", height: "6px",
-            background: "#f59e0b", borderRadius: "50%",
-          }}/>
+          <span style={{ width: "6px", height: "6px", background: "#f59e0b", borderRadius: "50%" }}/>
           Verificado
         </div>
 
         <hr style={{ border: "none", borderTop: "1px solid #f1f3f5", margin: "20px 0" }} />
 
-        {/* Tarjeta Vendedor — clic navega a su perfil público */}
+        {/* Tarjeta Vendedor */}
         <div
           onClick={() => { if (producto.userUid) navigate(`/vendedor?uid=${producto.userUid}`); }}
           style={{
@@ -386,7 +317,6 @@ if (data) {
           onMouseEnter={(e) => { if (producto.userUid) e.currentTarget.style.background = "#eef0f5"; }}
           onMouseLeave={(e) => { e.currentTarget.style.background = "var(--bg-crema)"; }}
         >
-          {/* Avatar */}
           <div style={{
             width: "44px", height: "44px", borderRadius: "50%",
             background: "linear-gradient(135deg,#c8a97a,#a07850)",
@@ -395,50 +325,32 @@ if (data) {
             overflow: "hidden", flexShrink: 0,
           }}>
             {avatarVendedor?.trim() ? (
-              <img
-                src={avatarVendedor}
-                alt={nombreVendedor}
-                style={{ width: "100%", height: "100%", objectFit: "cover" }}
-              />
+              <img src={avatarVendedor} alt={nombreVendedor} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
             ) : (
               (nombreVendedor || "?")[0].toUpperCase()
             )}
           </div>
-
-          {/* Info vendedor */}
           <div style={{ flex: 1 }}>
-            <h3 style={{
-              margin: 0, fontSize: "0.95rem",
-              fontWeight: 600, color: "var(--azul-oscuro)",
-            }}>
+            <h3 style={{ margin: 0, fontSize: "0.95rem", fontWeight: 600, color: "var(--azul-oscuro)" }}>
               {nombreVendedor}
             </h3>
-            <p style={{
-              margin: 0, fontSize: "0.8rem",
-              color: "#5c5c7a", fontWeight: 600,
-            }}>
+            <p style={{ margin: 0, fontSize: "0.8rem", color: "#5c5c7a", fontWeight: 600 }}>
               Vendedor de la UNP
             </p>
           </div>
-
-          {/* Chevron: indicador visual de clickeable */}
           <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#a0a5b9" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginLeft: "auto" }}><polyline points="9 18 15 12 9 6"/></svg>
         </div>
 
         <hr style={{ border: "none", borderTop: "1px solid #f1f3f5", margin: "20px 0" }} />
 
-       {/* Descripción */}
-        <h2 style={{
-          fontSize: "1.1rem", fontWeight: 700,
-          color: "var(--azul-oscuro)", marginBottom: "10px",
-        }}>
+        {/* Descripción */}
+        <h2 style={{ fontSize: "1.1rem", fontWeight: 700, color: "var(--azul-oscuro)", marginBottom: "10px" }}>
           Descripción
         </h2>
         <p style={{
           fontSize: "0.95rem", color: "#5c5c7a",
           lineHeight: 1.6, fontWeight: 600,
-          whiteSpace: "pre-wrap", 
-          wordBreak: "break-word", /* <--- ESTA ES LA CLAVE PARA EL DESBORDE */
+          whiteSpace: "pre-wrap", wordBreak: "break-word",
           margin: 0,
         }}>
           {descripcion}
@@ -469,7 +381,7 @@ if (data) {
           </button>
         </div>
 
-      </div>{/* /panel blanco */}
+      </div>
 
       {/* ── BARRA DE ACCIÓN FIJA ── */}
       <div style={{
@@ -483,9 +395,9 @@ if (data) {
         boxShadow: "0 -4px 20px rgba(0,0,0,0.03)",
       }}>
 
-        {/* Botón Favorito */}
+        {/* Botón Favorito — usa toggleFavorito del hook */}
         <button
-          onClick={handleFavorito}
+          onClick={toggleFavorito}
           aria-label={esFavorito ? "Quitar de favoritos" : "Añadir a favoritos"}
           style={{
             width: "54px", height: "54px",
@@ -516,8 +428,7 @@ if (data) {
             display: "flex", alignItems: "center", justifyContent: "center", gap: "8px",
             fontFamily: "'Nunito', sans-serif",
           }}>
-            <svg viewBox="0 0 24 24" width="20" height="20" fill="none"
-              stroke="currentColor" strokeWidth="2.5">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2.5">
               <circle cx="12" cy="12" r="10"/>
               <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>
             </svg>
@@ -555,7 +466,7 @@ if (data) {
           </button>
         )}
 
-      </div>{/* /bottom bar */}
+      </div>
 
       {/* ── TOASTS ── */}
       <div style={{

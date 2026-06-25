@@ -1,18 +1,11 @@
 // src/pages/Home.jsx
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate, useSearchParams }             from "react-router-dom";
-import {
-  collection, getDocs, query,
-  orderBy, limit, startAfter,
-  where, onSnapshot, writeBatch, doc, updateDoc,
-} from "firebase/firestore";
-import { db }              from "../services/firebase";
-import { useAuth }         from "../context/AuthContext";
-import { sincronizarFavoritos } from "../services/userService";
+import { useAuth }                                  from "../context/AuthContext";
+import { useProducts }                              from "../hooks/useProducts";
+import { useNotifications }                         from "../hooks/useNotifications";
 
 // ── Constantes ───────────────────────────────────────────────
-const PAGE_SIZE = 20;
-
 const CATEGORIAS = [
   { key: "todos",      label: "Todos",      icon: "🌟", bg: "#f1f3f5" },
   { key: "dulces",     label: "Dulces",     icon: "🍰", bg: "#ffeaea" },
@@ -25,12 +18,6 @@ const CATEGORIAS = [
 const ICONOS_CAT = {
   dulces: "🍫", bebidas: "☕", salados: "🍔",
   servicios: "🔧", materiales: "📚",
-};
-
-const ORDEN_CONFIG = {
-  recientes:   { campo: "fecha",  dir: "desc" },
-  precio_asc:  { campo: "precio", dir: "asc"  },
-  precio_desc: { campo: "precio", dir: "desc" },
 };
 
 const formatearTiempo = (timestamp) => {
@@ -108,13 +95,9 @@ const Home = () => {
   const navigate       = useNavigate();
   const [searchParams] = useSearchParams();
 
-  // ✅ FASE 2: useAuth reemplaza onAuthStateChanged local + localStorage de favoritos
-  const { user, favoritos, actualizarFavoritos } = useAuth();
+  const { user, favoritos } = useAuth();
 
-  const [notificaciones,   setNotificaciones]   = useState([]);
-  const [productos,        setProductos]        = useState([]);
-  const [cargando,         setCargando]         = useState(false);
-  const [todoCargado,      setTodoCargado]      = useState(false);
+  // ── Estado de UI ─────────────────────────────────────────
   const [busqueda,         setBusqueda]         = useState("");
   const [busquedaFirebase, setBusquedaFirebase] = useState("");
   const [categoriaActiva,  setCategoriaActiva]  = useState("todos");
@@ -122,104 +105,50 @@ const Home = () => {
   const [orden,            setOrden]            = useState("recientes");
   const [menuOrdenAbierto, setMenuOrdenAbierto] = useState(false);
 
-  const tabUrl                  = searchParams.get("tab") || "inicio";
+  const tabUrl = searchParams.get("tab") || "inicio";
   const [tabActiva, setTabActiva] = useState(tabUrl);
-
-  const sentinelRef  = useRef(null);
-  const ultimoDocRef = useRef(null);
-  const observerRef  = useRef(null);
-
   useEffect(() => { setTabActiva(tabUrl); }, [tabUrl]);
 
-  // Listener de notificaciones — depende de user del contexto
-  useEffect(() => {
-    if (!user) return;
-    const q = query(
-      collection(db, "notificaciones"),
-      where("paraUid", "==", user.uid),
-      orderBy("timestamp", "desc")
-    );
-    const unsub = onSnapshot(q, (snapshot) => {
-      setNotificaciones(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
-    });
-    return () => unsub();
-  }, [user]);
+  const sentinelRef = useRef(null);
+  const observerRef = useRef(null);
 
+  // ── Toast helper ─────────────────────────────────────────
   const mostrarToast = useCallback((mensaje, tipo = "success") => {
     const id = Date.now();
     setToasts((prev) => [...prev, { id, mensaje, tipo }]);
     setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 3000);
   }, []);
 
-  // Debounce búsqueda
+  // ── Debounce búsqueda ────────────────────────────────────
   useEffect(() => {
     const timer = setTimeout(() => setBusquedaFirebase(busqueda), 500);
     return () => clearTimeout(timer);
   }, [busqueda]);
 
-  // Carga paginada de productos
-  const cargarMasProductos = useCallback(async (esNuevoFiltro = false) => {
-    if (cargando || (todoCargado && !esNuevoFiltro)) return;
-    setCargando(true);
-    try {
-      const { campo, dir } = ORDEN_CONFIG[orden];
-      const col            = collection(db, "productos");
-      const constraints    = [];
+  // ── Hook: Productos ──────────────────────────────────────
+  const { productos, cargando, todoCargado, cargarMas } = useProducts({
+    orden,
+    categoriaActiva,
+    busquedaFirebase,
+    onError: (msg) => mostrarToast(msg, "error"),
+  });
 
-      if (busquedaFirebase.trim() !== "") {
-        constraints.push(where("keywords", "array-contains", busquedaFirebase.toLowerCase().trim()));
-      } else if (categoriaActiva !== "todos") {
-        constraints.push(where("categoria", "==", categoriaActiva));
-      }
-      constraints.push(orderBy(campo, dir));
-      constraints.push(limit(PAGE_SIZE));
-      if (ultimoDocRef.current && !esNuevoFiltro) {
-        constraints.push(startAfter(ultimoDocRef.current));
-      }
+  // ── Hook: Notificaciones ─────────────────────────────────
+  const { notificaciones, noLeidas, marcarLeida, limpiarTodas } = useNotifications(user?.uid);
 
-      const snapshot = await getDocs(query(col, ...constraints));
-      if (snapshot.size < PAGE_SIZE) setTodoCargado(true);
-
-      const nuevos = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
-      setProductos((prev) => {
-        if (esNuevoFiltro) return nuevos;
-        const ids = new Set(prev.map((p) => p.id));
-        return [...prev, ...nuevos.filter((p) => !ids.has(p.id))];
-      });
-      if (!snapshot.empty) {
-        ultimoDocRef.current = snapshot.docs[snapshot.docs.length - 1];
-      }
-    } catch (err) {
-      console.error("Error cargando productos:", err);
-      mostrarToast("Error al cargar productos", "error");
-    } finally {
-      setCargando(false);
-    }
-  }, [cargando, todoCargado, mostrarToast, orden, categoriaActiva, busquedaFirebase]);
-
-  useEffect(() => {
-    setTodoCargado(false);
-    ultimoDocRef.current = null;
-    cargarMasProductos(true);
-  }, [orden, categoriaActiva, busquedaFirebase]);
-
-  useEffect(() => {
-    if (!todoCargado && productos.length === 0 && !cargando) cargarMasProductos();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [productos, todoCargado]);
-
-  // Infinite scroll
+  // ── Infinite scroll ──────────────────────────────────────
   useEffect(() => {
     if (observerRef.current) observerRef.current.disconnect();
     if (todoCargado || !sentinelRef.current) return;
     observerRef.current = new IntersectionObserver(
-      (entries) => { if (entries[0].isIntersecting) cargarMasProductos(); },
+      (entries) => { if (entries[0].isIntersecting) cargarMas(); },
       { root: null, rootMargin: "200px", threshold: 0.1 }
     );
     observerRef.current.observe(sentinelRef.current);
     return () => observerRef.current?.disconnect();
-  }, [cargarMasProductos, todoCargado]);
+  }, [cargarMas, todoCargado]);
 
+  // ── Handlers ─────────────────────────────────────────────
   const productosFiltrados = productos.filter((p) =>
     busqueda.trim() === "" ||
     (p.titulo || "").toLowerCase().includes(busqueda.toLowerCase())
@@ -228,11 +157,8 @@ const Home = () => {
   const handleVerDetalle = (id) => navigate(`/producto?id=${id}`);
 
   const handleLimpiarNotificaciones = async () => {
-    if (notificaciones.length === 0) return;
     try {
-      const batch = writeBatch(db);
-      notificaciones.forEach(n => batch.delete(doc(db, "notificaciones", n.id)));
-      await batch.commit();
+      await limpiarTodas();
       mostrarToast("Notificaciones eliminadas");
     } catch {
       mostrarToast("Error al procesar", "error");
@@ -241,9 +167,7 @@ const Home = () => {
 
   const handleNotifClick = async (notif) => {
     try {
-      if (!notif.leido) {
-        await updateDoc(doc(db, "notificaciones", notif.id), { leido: true });
-      }
+      if (!notif.leido) await marcarLeida(notif.id);
     } finally {
       if (notif.tipo === "nuevo_producto" && notif.productoId) {
         navigate(`/producto?id=${notif.productoId}`);
@@ -410,18 +334,18 @@ const Home = () => {
           ) : (
             <div className="notif-list">
               {notificaciones.map((notif) => {
-                const esFav      = notif.tipo === "favorito";
-                const esSeguidor = notif.tipo === "seguidor";
+                const esFav       = notif.tipo === "favorito";
+                const esSeguidor  = notif.tipo === "seguidor";
                 const esNuevoProd = notif.tipo === "nuevo_producto";
                 let icono = "💬";
-                if (esFav) icono = "❤️";
-                if (esSeguidor) icono = "👤";
+                if (esFav)       icono = "❤️";
+                if (esSeguidor)  icono = "👤";
                 if (esNuevoProd) icono = "📢";
-                let textoAccion   = "quiere comprar";
+                let textoAccion    = "quiere comprar";
                 let mostrarProducto = true;
-                if (esFav)       { textoAccion = "guardó"; }
+                if (esFav)           { textoAccion = "guardó"; }
                 else if (esSeguidor) { textoAccion = "empezó a seguirte"; mostrarProducto = false; }
-                else if (esNuevoProd) { textoAccion = "publicó un nuevo producto:"; }
+                else if (esNuevoProd){ textoAccion = "publicó un nuevo producto:"; }
 
                 return (
                   <div
@@ -465,7 +389,7 @@ const Home = () => {
         <button className={`nav-item${tabActiva === "notifs" ? " active" : ""}`} onClick={() => navigate("/?tab=notifs")} aria-label="Notificaciones">
           <div className="nav-icon-wrap" style={{ position: "relative", display: "inline-flex" }}>
             <svg className="nav-icon" viewBox="0 0 24 24" fill="none" strokeWidth="2.2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
-            {notificaciones.some(n => !n.leido) && (
+            {noLeidas > 0 && (
               <span className="nav-notif-badge" style={{
                 position: "absolute", top: "-4px", right: "-6px",
                 background: "#ef4444", color: "white", fontSize: "0.65rem",
@@ -474,7 +398,7 @@ const Home = () => {
                 justifyContent: "center", border: "2px solid #16a34a",
                 padding: "0 4px", lineHeight: 1,
               }}>
-                {notificaciones.filter(n => !n.leido).length}
+                {noLeidas}
               </span>
             )}
           </div>
