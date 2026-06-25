@@ -4,6 +4,7 @@ import {
   updateDoc, arrayUnion, arrayRemove,
 } from "firebase/firestore";
 import { db } from "./firebase";
+import { traducirError, logError } from "../utils/errorHandler";
 
 /**
  * Obtiene el perfil de un usuario/vendedor por su UID.
@@ -34,20 +35,26 @@ export const obtenerProductosPorVendedor = async (uid) => {
  * @param {string} miUid
  */
 export const seguirVendedor = async (vendedorUid, miUid) => {
-  await updateDoc(doc(db, "usuarios", vendedorUid), {
-    seguidores: arrayUnion(miUid),
-  });
+  try {
+    await updateDoc(doc(db, "usuarios", vendedorUid), {
+      seguidores: arrayUnion(miUid),
+    });
+  } catch (err) {
+    logError("[userService.seguirVendedor]", err);
+    throw new Error(traducirError(err, "firestore"));
+  }
 };
 
-/**
- * Quita al usuario actual de la lista de seguidores de un vendedor.
- * @param {string} vendedorUid
- * @param {string} miUid
- */
+
 export const dejarDeSeguirVendedor = async (vendedorUid, miUid) => {
-  await updateDoc(doc(db, "usuarios", vendedorUid), {
-    seguidores: arrayRemove(miUid),
-  });
+  try {
+    await updateDoc(doc(db, "usuarios", vendedorUid), {
+      seguidores: arrayRemove(miUid),
+    });
+  } catch (err) {
+    logError("[userService.dejarDeSeguirVendedor]", err);
+    throw new Error(traducirError(err, "firestore"));
+  }
 };
 
 /**
@@ -58,30 +65,35 @@ export const dejarDeSeguirVendedor = async (vendedorUid, miUid) => {
  * @returns {Promise<{perfil: Object, favoritosGuardados: string[]}>}
  */
 export const obtenerOCrearPerfilUsuario = async (user) => {
-  const userRef = doc(db, "usuarios", user.uid);
-  const snap = await getDoc(userRef);
+  try {
+    const userRef = doc(db, "usuarios", user.uid);
+    const snap    = await getDoc(userRef);
 
-  const perfilBase = {
-    uid: user.uid,
-    nombre: user.displayName || "Estudiante UNP",
-    email: user.email,
-    avatar: user.photoURL || "",
-    ubicacion: "Piura",
-    bio: "Estudiante de la UNP",
-    acercaDe: "¡Hola! Bienvenido a mi tienda en el campus.",
-    telefono: "",
-  };
+    const perfilBase = {
+      uid:       user.uid,
+      nombre:    user.displayName || "Estudiante UNP",
+      email:     user.email,
+      avatar:    user.photoURL || "",
+      ubicacion: "Piura",
+      bio:       "Estudiante de la UNP",
+      acercaDe:  "¡Hola! Bienvenido a mi tienda en el campus.",
+      telefono:  "",
+    };
 
-  if (!snap.exists()) {
-    await setDoc(userRef, perfilBase);
-    return { perfil: perfilBase, favoritosGuardados: [] };
+    if (!snap.exists()) {
+      await setDoc(userRef, perfilBase);
+      return { perfil: perfilBase, favoritosGuardados: [] };
+    }
+
+    const datosGuardados = snap.data();
+    return {
+      perfil:             { ...perfilBase, ...datosGuardados },
+      favoritosGuardados: datosGuardados.favoritos || [],
+    };
+  } catch (err) {
+    logError("[userService.obtenerOCrearPerfilUsuario]", err);
+    throw new Error(traducirError(err, "firestore"));
   }
-
-  const datosGuardados = snap.data();
-  return {
-    perfil: { ...perfilBase, ...datosGuardados },
-    favoritosGuardados: datosGuardados.favoritos || [],
-  };
 };
 
 /**

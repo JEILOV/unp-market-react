@@ -33,12 +33,6 @@ const ICONOS_CAT = {
   servicios: "🔧", materiales: "📚",
 };
 
-// ──────────────────────────────────────────────────────────────
-//  UTILIDAD: leer / escribir favoritos en localStorage
-// ──────────────────────────────────────────────────────────────
-const getFavs  = ()       => JSON.parse(localStorage.getItem("listaFavoritos") || "[]");
-const saveFavs = (favs)   => localStorage.setItem("listaFavoritos", JSON.stringify(favs));
-const isFav    = (id)     => getFavs().includes(id);
 
 
 // ──────────────────────────────────────────────────────────────
