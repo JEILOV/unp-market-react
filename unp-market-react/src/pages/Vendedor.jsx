@@ -1,13 +1,16 @@
 // src/pages/Vendedor.jsx
 import { useState, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import {
-  doc, getDoc, collection, query, where, getDocs,
-  updateDoc, arrayUnion, arrayRemove,
-} from "firebase/firestore";
+
 import { onAuthStateChanged } from "firebase/auth";
-import { db, auth } from "../services/firebase";
+import { auth } from "../services/firebase";
 import { crearNotificacion } from "../services/notificationService";
+import {
+  obtenerPerfilVendedor,
+  obtenerProductosPorVendedor,
+  seguirVendedor,
+  dejarDeSeguirVendedor,
+} from "../services/userService";
 
 const ICONOS_CAT = {
   dulces: "🍫", bebidas: "☕", salados: "🍔",
@@ -133,46 +136,41 @@ const Vendedor = () => {
     if (!uid) return;
     let cancelado = false;
 
-    const cargar = async () => {
-      setCargando(true);
-      try {
-        const userSnap = await getDoc(doc(db, "usuarios", uid));
-        if (cancelado) return;
+ const cargar = async () => {
+  setCargando(true);
+  try {
+    let datosVendedor = await obtenerPerfilVendedor(uid);
+    if (cancelado) return;
 
-        let datosVendedor = userSnap.exists() ? userSnap.data() : null;
+    if (datosVendedor && currentUser && Array.isArray(datosVendedor.seguidores)) {
+      setEsSeguidor(datosVendedor.seguidores.includes(currentUser.uid));
+    }
 
-        if (datosVendedor && currentUser && Array.isArray(datosVendedor.seguidores)) {
-          setEsSeguidor(datosVendedor.seguidores.includes(currentUser.uid));
-        }
+    const lista = await obtenerProductosPorVendedor(uid);
+    if (cancelado) return;
 
-        const q    = query(collection(db, "productos"), where("userUid", "==", uid));
-        const snap = await getDocs(q);
-        if (cancelado) return;
+    if (!datosVendedor && lista.length > 0) {
+      const primer = lista[0];
+      datosVendedor = {
+        nombre:    primer.vendedorNombre || primer.vendedor || "Vendedor UNP",
+        avatar:    primer.avatarVendedor || "",
+        bio:       "Estudiante de la UNP",
+        acercaDe:  "¡Hola! Bienvenido a mi tienda.",
+        ubicacion: "Piura",
+      };
+    }
 
-        const lista = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    if (!datosVendedor) { setNoExiste(true); return; }
 
-        if (!datosVendedor && lista.length > 0) {
-          const primer = lista[0];
-          datosVendedor = {
-            nombre:    primer.vendedorNombre || primer.vendedor || "Vendedor UNP",
-            avatar:    primer.avatarVendedor || "",
-            bio:       "Estudiante de la UNP",
-            acercaDe:  "¡Hola! Bienvenido a mi tienda.",
-            ubicacion: "Piura",
-          };
-        }
-
-        if (!datosVendedor) { setNoExiste(true); return; }
-
-        setVendedor(datosVendedor);
-        setProductos(lista);
-      } catch (err) {
-        console.error(err);
-        if (!cancelado) setNoExiste(true);
-      } finally {
-        if (!cancelado) setCargando(false);
-      }
-    };
+    setVendedor(datosVendedor);
+    setProductos(lista);
+  } catch (err) {
+    console.error(err);
+    if (!cancelado) setNoExiste(true);
+  } finally {
+    if (!cancelado) setCargando(false);
+  }
+};
 
     cargar();
     return () => { cancelado = true; };
@@ -186,30 +184,24 @@ const Vendedor = () => {
       return;
     }
 
-    const vendedorRef = doc(db, "usuarios", uid);
+try {
+  if (esSeguidor) {
+    await dejarDeSeguirVendedor(uid, currentUser.uid);
+    setEsSeguidor(false);
+  } else {
+    await seguirVendedor(uid, currentUser.uid);
+    setEsSeguidor(true);
 
-    try {
-      if (esSeguidor) {
-        await updateDoc(vendedorRef, {
-          seguidores: arrayRemove(currentUser.uid),
-        });
-        setEsSeguidor(false);
-      } else {
-        await updateDoc(vendedorRef, {
-          seguidores: arrayUnion(currentUser.uid),
-        });
-        setEsSeguidor(true);
-
-      await crearNotificacion({
-  paraUid: uid,
-  deUid: currentUser.uid,
-  deNombre: currentUser.displayName,
-  tipo: "seguidor",
-});
-      }
-    } catch (err) {
-      console.error(err);
-    }
+    await crearNotificacion({
+      paraUid: uid,
+      deUid: currentUser.uid,
+      deNombre: currentUser.displayName,
+      tipo: "seguidor",
+    });
+  }
+} catch (err) {
+  console.error(err);
+}
   };
 
   if (cargando) return (
