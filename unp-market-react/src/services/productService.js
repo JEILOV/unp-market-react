@@ -5,15 +5,17 @@ import {
 } from "firebase/firestore";
 import { db }              from "./firebase";
 import { generarPrefijos } from "../utils/imageUtils";
-import { traducirError, logError } from "../utils/errorHandler";
-
-// ── El addDoc quedó en los imports pero no se usa — lo eliminé.
-// ── Un solo bloque de imports arriba, sin repetir.
+import { traducirError, logError } from "../utils/errorHandler"; // ← corregido: utils/, no services/
 
 export const obtenerProductoPorId = async (productoId) => {
   if (!productoId) return null;
-  const snap = await getDoc(doc(db, "productos", productoId));
-  return snap.exists() ? { id: snap.id, ...snap.data() } : null;
+  try {                                                           // ← agregado
+    const snap = await getDoc(doc(db, "productos", productoId));
+    return snap.exists() ? { id: snap.id, ...snap.data() } : null;
+  } catch (err) {
+    logError("[productService.obtenerProductoPorId]", err);
+    throw new Error(traducirError(err, "firestore"));
+  }
 };
 
 export const crearProducto = async ({ titulo, precio, categoria, descripcion, imagen, user, perfil }) => {
@@ -38,8 +40,8 @@ export const crearProducto = async ({ titulo, precio, categoria, descripcion, im
       prefijos,
     });
 
-    const userRef  = doc(db, "usuarios", user.uid);
-    const snap     = await getDoc(userRef);
+    const userRef = doc(db, "usuarios", user.uid);
+    const snap    = await getDoc(userRef);
     if (snap.exists()) {
       batch.update(userRef, {
         totalPublicaciones: (snap.data().totalPublicaciones || 0) + 1,
@@ -50,7 +52,7 @@ export const crearProducto = async ({ titulo, precio, categoria, descripcion, im
     return nuevoRef.id;
   } catch (err) {
     logError("[productService.crearProducto]", err);
-    throw new Error(traducirError(err, "firestore"));
+    throw new Error(traducirError(err, "firestore")); // mensaje limpio hacia el componente
   }
 };
 
